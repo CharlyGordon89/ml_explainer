@@ -1,0 +1,12 @@
+Metadata-Version: 2.1
+Name: ml-explainer
+Version: 0.1.0
+Summary: Reusable explanation module for SHAP, LIME, and permutation importance.
+Author: Ruslan Mamedov
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Dist: shap
+Requires-Dist: lime
+Requires-Dist: scikit-learn
+Requires-Dist: numpy
+Requires-Dist: pandas
