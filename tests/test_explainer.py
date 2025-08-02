@@ -2,7 +2,11 @@ import pytest
 import numpy as np
 import pandas as pd
 import shap
+from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.neural_network import MLPClassifier
+from xgboost import XGBClassifier  # Requires xgboost package
 from sklearn.datasets import load_iris, load_diabetes
 
 from ml_explainer.explainer import (
@@ -23,9 +27,9 @@ def iris_data():
 
 @pytest.fixture
 def iris_model(iris_data):
-    X, y = iris_data
+    # Add random_state for reproducibility
     model = RandomForestClassifier(n_estimators=10, random_state=42)
-    model.fit(X, y)
+    model.fit(*iris_data)
     return model
 
 @pytest.fixture
@@ -57,6 +61,58 @@ def test_shap_kwargs_forwarding():
     with pytest.raises(TypeError):
         explain_with_shap(model, X, invalid_param=True)
 
+
+@pytest.mark.parametrize("model_class,expected_output", [
+    (RandomForestClassifier, "explanation"),  # Returns Explanation object
+    (LogisticRegression, "list"),            # Returns list of arrays
+    (MLPClassifier, "list"),                 # Returns list of arrays
+    (XGBClassifier, "explanation")           # Returns Explanation object
+])
+
+
+def test_shap_with_multiple_models(iris_data, model_class, expected_output):
+    """Verify SHAP works across model architectures"""
+    X, y = iris_data
+    
+    # Special handling for different models
+    if model_class == MLPClassifier:
+        model = model_class(hidden_layer_sizes=(10,), max_iter=500).fit(X, y)
+    elif model_class == LogisticRegression:
+        model = model_class(max_iter=1000).fit(X, y)
+    else:
+        model = model_class().fit(X, y)
+    
+    explanation = explain_with_shap(model, X)
+    
+    if expected_output == "explanation":
+        assert isinstance(explanation, shap.Explanation)
+        # For multi-class, check it has 3 dimensions
+        if len(np.unique(y)) > 2:
+            assert len(explanation.values.shape) == 3
+        else:
+            assert len(explanation.values.shape) == 2
+    else:
+        assert isinstance(explanation, list)
+        assert all(isinstance(arr, np.ndarray) for arr in explanation)
+        assert len(explanation[0].shape) == 2  # (samples, features)
+
+
+def test_shap_with_non_sklearn():
+    """Test minimal predict() interface with KernelExplainer"""
+    class CustomModel:
+        def predict(self, X):
+            return np.random.rand(len(X))  # Regression output
+            
+    X = np.random.rand(100, 5)
+    model = CustomModel()
+    
+    # Explicitly use KernelExplainer
+    explainer = shap.KernelExplainer(model.predict, X)
+    shap_values = explainer.shap_values(X)
+    
+    assert isinstance(shap_values, np.ndarray)
+    assert shap_values.shape == (100, 5)
+
 # --------------------------
 # LIME Tests
 # --------------------------
@@ -75,6 +131,21 @@ def test_explain_with_lime(iris_data, iris_model):
     assert lime_explainer is not None
     assert lime_explainer.feature_names == list(data.feature_names)
 
+
+def test_lime_with_regression():
+    """Test LIME with regression models"""
+    data = load_diabetes()
+    X = pd.DataFrame(data.data, columns=data.feature_names)
+    model = RandomForestRegressor().fit(X, data.target)
+    
+    explainer = explain_with_lime(
+        model,
+        X,
+        feature_names=data.feature_names,
+        mode="regression"  # Key difference
+    )
+    
+    assert explainer.mode == "regression"
 
 # --------------------------
 # Permutation Importance Tests
