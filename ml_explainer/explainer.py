@@ -1,17 +1,21 @@
-# ml_explainer/explainer.py
-
 import shap
 import lime.lime_tabular
 from sklearn.inspection import permutation_importance
 import numpy as np
 import pandas as pd
+from typing import Union, List
+from sklearn.base import BaseEstimator
 
 
-def explain_with_shap(model, X, nsamples=100):
-    """Generate SHAP values for a scikit-learn model using a subset of the data."""
+def explain_with_shap(
+    model: BaseEstimator,
+    X: Union[pd.DataFrame, np.ndarray],
+    nsamples: int = 100,
+    **shap_kwargs) -> shap.Explanation:
+
+    """Add type hints and allow shap params forwarding"""
     explainer = shap.Explainer(model, X)
-    shap_values = explainer(X[:nsamples], check_additivity=False)
-    return shap_values
+    return explainer(X[:nsamples], **shap_kwargs)
 
 
 def explain_with_lime(model, X, feature_names, class_names=None, mode="classification"):
@@ -34,3 +38,9 @@ def explain_with_permutation(model, X, y, scoring="accuracy", n_repeats=10, rand
         "importance_std": result.importances_std
     }).sort_values(by="importance_mean", ascending=False)
     return importance_df
+
+
+def explain_with_shap_parallel(model, X, nsamples=100, n_jobs=-1):
+    """Add parallel computation for large datasets"""
+    with joblib.Parallel(n_jobs=n_jobs):
+        return explain_with_shap(model, X, nsamples)
